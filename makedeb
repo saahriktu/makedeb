@@ -1,0 +1,101 @@
+#!/bin/bash
+# makedeb v0.5
+# 2017 (c) saahriktu
+
+#Make debian-binary
+function act_md {
+	echo "2.0" > debian-binary
+	ar rcs $1 debian-binary control.tar.gz data.tar.lzma
+}
+
+#Make md5sum
+function act_mm {
+	find -type f -exec md5sum {} \; > md5sums
+	sed -i 's/  \.\//  /g;/  md5sums$/d' md5sums
+	mv md5sums ..
+}
+
+#Make control.tar.gz
+function act_mc {
+	tar cvfz control.tar.gz control md5sums
+}
+
+#Fix Installed-Size section
+function act_is {
+	TTLBYTES=$(du -csb * | awk '{ print $1 }' | tail -n 1)
+	TTLSECTORS=$(perl -w -e "use POSIX; print ceil($TTLBYTES/1024.0)")
+	sed -i "s/^Installed-Size:.*$/Installed-Size: $TTLSECTORS/" ../control
+}
+
+function act_bp {
+	BINLIST=$(find . -type f -exec file {} \; | grep -e :\ ELF | \
+		grep -e BuildID | sed 's/:\ ELF.*$//')
+	depslist=""
+	for CURRENTBINARY in ${BINLIST} ; do
+		for libfile in $(ldd ${CURRENTBINARY} | sed "s/^.*\ \//\//g;s/\ .*$//g") ; do
+		debname=$(dpkg -S ${libfile} 2>/dev/null | tail -n 1 | \
+			sed "s/:.*$//")
+		depslist+=$(apt-cache show ${debname} 2>/dev/null | \
+        			grep ^Version | \
+        sed "s/[\+-].*$//;s/^Version/${debname}/;s/:\ /\ \(>=\ /;s/$/\)/")
+		# yes, this is a dirty hack, but it works unless your package
+		#name will be a "___break___marker___"
+		depslist+="___break___marker___"
+		done
+	done
+	TOTALDEPS=$(echo "${depslist}" | sed 's/___break___marker___/\n/g' | \
+        	sort -u | sed '/^$/d' | uniq | tr "\\n" "," | \
+		sed 's/,$//;s/,/,\ /g')
+	sed -i "s/^Depends:.*$/Depends: ${TOTALDEPS}/" ../control
+}
+
+if [ "$#" -lt 1 ]; then
+        echo "usage: makedeb <action>"
+        exit
+fi
+case $1 in
+md) 
+if [ "$#" -lt 2 ]; then
+        echo "usage: makedeb md <filename.deb>"
+        exit
+fi
+act_md $2
+;;
+mm)
+act_mm
+;;
+mc)
+act_mc
+;;
+#Entire package building
+ep)
+if [ "$#" -lt 2 ]; then
+        echo "usage: makedeb ep <filename.deb> [nodeps]"
+        exit
+fi
+if [ "$3" != "nodeps" ]; then
+	act_bp
+fi
+chown root:root * -R
+tar cvf data.tar *
+lzma -9 data.tar
+mv data.tar.lzma ..
+act_mm
+act_is
+cd ..
+act_mc
+act_md $2
+;;
+#Half package building
+hp)
+if [ "$#" -lt 2 ]; then
+        echo "usage: makedeb hp <filename.deb>"
+        exit
+fi
+act_mc
+act_md $2
+;;
+bp)
+act_bp
+;;
+esac

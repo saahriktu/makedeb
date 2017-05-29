@@ -1,0 +1,11 @@
+makedeb tool; equivalent of makepkg from Slackware
+
+usage:
+***
+makedeb ep <filename.deb> [nodeps] - Entire Package building
+***
+makedeb md <filename.deb> - pack control.tar.gz data.tar.lzma to .deb file
+makedeb mm - make md5sums file
+makedeb mc - make control.tar.gz file
+makedeb hp <filename.deb> - Half Package building
+makedeb bp - adjust binary deps in control file
